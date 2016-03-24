@@ -31,8 +31,8 @@ def main():
         print(test.prediction.sentiment)
         print(test.prediction.probabilities)
 
-        # try autocorrect
-        # try different n-grams
+        # TODO: try word boundaries
+        # TODO: try tdidf
 
 
 if __name__ == '__main__':

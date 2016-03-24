@@ -4,22 +4,18 @@ import pickle
 from datetime import datetime
 import pytz
 import nltk
+from autocorrect import spell
+from nltk.corpus import stopwords
 
 
 class Tweet(object):
-    ID = 0
-    topic = ""
-    text = ""
-    date = None
-    sentiment = ""
-    prediction = None
-
-    def __init__(self, ID, topic, text, date, sentiment):
+    def __init__(self, ID=-1, topic="", text="", date=None, sentiment=None):
         self.ID = ID
         self.topic = topic
         self.text = text
-        self.date = datetime.strptime(date,'%a %b %d %H:%M:%S +0000 %Y').replace(tzinfo=pytz.UTC)
+        self.date = datetime.strptime(date, '%a %b %d %H:%M:%S +0000 %Y').replace(tzinfo=pytz.UTC)
         self.sentiment = sentiment
+        self.prediction = Prediction()
 
 
 def parse_serialize_rawdata():
@@ -45,30 +41,34 @@ def preprocess(tweets):
     stemmer = nltk.stem.snowball.SnowballStemmer('english')
 
     for t in tweets:
-        t.text = t.text.lower()  # convert to lower case
-        # replace user mentions (max 15 characters [A-Za-Z0-9_]) and hyperlinks, don't remove to preserve word order
-        t.text = re.sub(r'(^|[^@\w])@(\w{1,15})\b', 'USER_MENTION', t.text)
-        t.text = re.sub(r'https?://\S+', 'URL', t.text)
-        t.text = re.sub(r'www\.\S+', 'URL', t.text)
+        text = t.text
 
-        # auto correct?
+        text = text.lower()  # convert to lower case
+        # replace user mentions (max 15 characters [A-Za-Z0-9_]) and hyperlinks, don't remove to preserve word order
+        text = re.sub(r'(^|[^@\w])@(\w{1,15})\b', 'USER_MENTION', text)
+        text = re.sub(r'https?://\S+', 'URL', text)
+        text = re.sub(r'www\.\S+', 'URL', text)
+
+        # auto correct //takes too long
+        # text = ' '.join([spell(word) for word in text.split()])
 
         # stem words
-        t.text = stemmer.stem(t.text)
+        text = stemmer.stem(text)
 
-        # hesitant about removing stop words since they make more of a difference in sentiment analysis
-        # examples off top of my head "the shit" vs "shit", "not good" vs "good", "fuck with it" vs "fuck it"
-        # I'll try to remove some stop words selectively later on to see if it can improve accuracy
-        # from nltk.corpus import stopwords
+        # hesitant about removing stop words i.e. big difference between "good" vs "not good" //lowers accuracy significantly
         # sw = set(stopwords.words("english"))  # set to prevent duplicates and faster "in" operations
+        # text = ' '.join([word for word in text.split() if word not in sw])
+
+        t.text = text
 
 
 class BayesSentimentClassifier(object):
-    trained_ngram_sentiment_dictionary = {}
-    positive_count = 0
-    neutral_count = 0
-    irrelevant_count = 0
-    negative_count = 0
+    def __init__(self):
+        self.trained_ngram_sentiment_dictionary = {}
+        self.positive_count = 0
+        self.neutral_count = 0
+        self.irrelevant_count = 0
+        self.negative_count = 0
 
     def train(self, tweets):
         for t in tweets:
@@ -117,7 +117,6 @@ class BayesSentimentClassifier(object):
             tweet_ngrams = 0  # can't len(generator()) so just increment a variable
 
             for ngram in ngrams:
-
                 prob_ngram_exists = 0
 
                 if ngram in self.trained_ngram_sentiment_dictionary:
@@ -153,8 +152,6 @@ class BayesSentimentClassifier(object):
                     sentiment = 'irrelevant'
                 elif highest_prob == cum_neutral_prob:
                     sentiment = 'neutral'
-                elif cum_pos_prob == cum_negative_prob:
-                    sentiment = 'indeterminate'
                 elif highest_prob == cum_pos_prob:
                     sentiment = 'positive'
                 elif highest_prob == cum_negative_prob:
@@ -163,14 +160,11 @@ class BayesSentimentClassifier(object):
                 t.prediction = Prediction(sentiment, probabilities)
             else:
                 t.prediction = Prediction('indeterminate', None)
-                print(t.text)
+                # print(t.text)
 
 
 class Prediction(object):
-    sentiment = ''
-    probabilities = None
-
-    def __init__(self, sentiment, probabilities):
+    def __init__(self, sentiment="", probabilities=[]):
         self.sentiment = sentiment
         self.probabilities = probabilities
 
@@ -188,6 +182,7 @@ def accuracy_score(tweets):
 
 def main():
     parse_serialize_rawdata()
+
 
 if __name__ == '__main__':
     main()
